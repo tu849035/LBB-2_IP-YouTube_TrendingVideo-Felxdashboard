@@ -1,0 +1,147 @@
+---
+title: "YouTube Trending Video - Felxdashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+    theme:
+      version: 4
+      bootswatch: cerulean
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+
+options(scipen = 99)
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(glue)
+library(scales)
+library(plyr)
+library(tidyr)
+
+vids <- read_csv("data_input/youtubetrends.csv")
+vids_clean <- vids %>% 
+  mutate(
+    channel_title = as.factor(channel_title),
+    category_id = as.factor(category_id),
+    publish_when = as.factor(publish_when),
+    publish_wday = as.factor(publish_wday),
+    timetotrend = as.factor(timetotrend),
+    likesp = likes/views,
+    dislikesp =  dislikes / views,
+    commentp =comment_count / views
+  ) %>% 
+  select(-c(comments_disabled, ratings_disabled, video_error_or_removed))
+category_views <- aggregate(views~category_id,vids_clean,sum)
+head(category_views[order(category_views$views, decreasing = T),],4)
+```
+Row
+-----------------------------------------------------------------------
+
+### Likes & Comments per Views for Top 4 Category
+
+```{r}
+Videos_top_4 <- vids_clean[vids_clean$category_id %in% c("Entertainment", "Music", "Comedy", "Howto and Style"), ]
+
+plot1 <- Videos_top_4 %>% 
+  ggplot(aes(x = category_id,
+             y = likesp,
+             text = likesp)) +
+  geom_boxplot(outlier.shape = NA, fill = "black" , col = "green", alpha = 0.5 ) +
+  geom_jitter(aes(size=commentp), col="purple", alpha = 0.2) +
+  labs(title = "Purple Buble =
+       Comment per View",
+       subtitle = "Entertainment, Music, Comedy, Howto and Style",
+       x = "Category",
+       y = "Likes per View",
+       size = "Comment per View") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+ggplotly(plot1, tooltip = "text")
+```
+
+### Top 10 Trending Channel Youtube
+
+```{r}
+Videos_10chan <- as.data.frame(table(vids_clean$channel_title))
+colnames(Videos_10chan) <- c("Title", "Freq")
+Videos_10chan <- Videos_10chan[Videos_10chan$Freq >= 10 , ]
+Videos_10chan <- head(Videos_10chan[order(Videos_10chan$Freq, decreasing=T), ], 10)%>%
+  mutate(label = glue("{Freq} Videos"))
+
+plot2 <- Videos_10chan %>% 
+  ggplot(aes(x=  Freq,
+             y= reorder(Title,Freq),
+             fill = Freq,
+             text = label)) +
+  geom_col(aes(fill = Freq)) +
+  labs(title = NULL,
+       x = "Video Count",
+       y = NULL) +
+  scale_fill_gradient(low = "purple", high = "green") +
+  theme_minimal() +
+  theme(legend.position = "none")+
+  geom_vline(xintercept=mean(Videos_10chan$Freq), col="white")+ 
+  scale_x_continuous(breaks=seq(0,35,5))
+
+ggplotly(plot2, tooltip = "text")
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Categories with Highest Trending Videos of Day/Night period
+
+```{r}
+vids_clean$publish_when <- ifelse(test = vids_clean$publish_hour > 12, yes = "Night", no = "Day")
+Videos_DayNight <- as.data.frame(table(vids_clean$category_id, vids_clean$publish_when))%>%
+  mutate(label = glue("{Freq} Videos"))
+
+plot3 <- Videos_DayNight %>%
+  ggplot(aes(x = Freq,
+             y = reorder(Var1, Freq),
+             fill = Freq,
+             text = label)) +
+  geom_col(mapping = aes(fill = Var2), position = "stack") +
+  labs(x = "Video Count", y = NULL,
+       fill = NULL,
+       title = NULL) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+ggplotly(plot3, tooltip = "text")
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Publish Time & Views of 4 Top Categories
+
+```{r}
+Videos_TimeViews <- aggregate(views ~ category_id + publish_hour,
+                       data = Videos_top_4,
+                       FUN = mean) %>% 
+  mutate(label = glue("Views: {views} Views
+                      Publish Hour: {publish_hour}"))
+
+plot4 <- Videos_TimeViews %>% 
+  ggplot(aes(x = publish_hour,
+             y = views,
+             text = label)) +
+  geom_line(aes(group = category_id,
+                col = category_id)) +
+  labs(x = "Publish Hour", y = "Views",
+       fill = NULL,
+       title = NULL) +
+  geom_point(aes(col = category_id)) +
+  theme_minimal()
+
+ggplotly(plot4, tooltip = "text")
+```
